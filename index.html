@@ -368,6 +368,10 @@ button.ucard:disabled{cursor:default}
 .found-ph{font-size:46cqw}
 .found-ph.red{color:var(--card-red)}
 
+.share-row{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
+#shareApp .share-row{justify-content:flex-start}
+a.btn{text-decoration:none}
+
 /* Classement */
 .rankcard{appearance:none;display:flex;align-items:center;gap:14px;padding:14px;border-radius:16px;border:2px solid var(--ink);background:var(--sheet);cursor:pointer;text-align:left;width:100%;transition:transform .12s ease, box-shadow .12s ease}
 .rankcard:hover{transform:translate(-2px,-2px);box-shadow:4px 4px 0 var(--brand)}
@@ -457,6 +461,16 @@ table.rank{width:100%;border-collapse:collapse;font-size:15px;font-variant-numer
     <div class="games" id="games"></div>
     <h2 class="sec">Cartes</h2>
     <div class="games" id="games2"></div>
+    <div class="block" id="shareApp" hidden>
+      <h3>Inviter des copains</h3>
+      <p class="hint" style="margin:0">Envoie-leur le lien : pas de compte à créer, ça marche sur téléphone.</p>
+      <div class="share-row">
+        <button class="btn small primary" type="button" data-act="share-app" id="shareNative1" hidden>Partager…</button>
+        <a class="btn small" id="waApp" href="#" target="_blank" rel="noopener">WhatsApp</a>
+        <a class="btn small" id="snapApp" href="#" target="_blank" rel="noopener">Snapchat</a>
+        <button class="btn small" type="button" data-act="copy-app">Copier le lien</button>
+      </div>
+    </div>
     <button class="rankcard" type="button" data-act="rank">
       <span class="rk-icon" aria-hidden="true"><svg viewBox="0 0 60 60"><rect class="i-me" x="5" y="26" width="15.5" height="28" rx="3"/><rect class="i-brand" x="22.25" y="11" width="15.5" height="43" rx="3"/><rect class="i-opp" x="39.5" y="34" width="15.5" height="20" rx="3"/></svg></span>
       <span class="rk-txt"><b>Classement</b><small id="rankTeaser">Victoires en salon, jeu par jeu</small></span>
@@ -537,6 +551,11 @@ table.rank{width:100%;border-collapse:collapse;font-size:15px;font-variant-numer
     <div class="linkrow" id="waitLinkRow">
       <input class="input" id="waitLink" type="text" readonly aria-label="Lien du salon">
       <button class="btn small" type="button" data-act="copy">Copier</button>
+    </div>
+    <div class="share-row" id="waitShare">
+      <button class="btn small primary" type="button" data-act="share-salon" id="shareNative2" hidden>Partager…</button>
+      <a class="btn small" id="waSalon" href="#" target="_blank" rel="noopener">Envoyer sur WhatsApp</a>
+      <a class="btn small" id="snapSalon" href="#" target="_blank" rel="noopener">Envoyer sur Snapchat</a>
     </div>
     <p class="pulse" id="waitPulse">En attente d'un adversaire…</p>
     <div class="invite" id="inviteBox" hidden>
@@ -1741,6 +1760,12 @@ function renderWait() {
   if (showShare && link && qrBox.dataset.for !== link) { qrBox.innerHTML = qrSVG(link); qrBox.dataset.for = link; if (!qrBox.innerHTML) qrBox.hidden = true; }
   linkRow.hidden = !(showShare && link);
   if (link) $('#waitLink').value = link;
+  $('#waitShare').hidden = !(showShare && link);
+  if (showShare && link) {
+    $('#waSalon').href = waHref(salonMsg());
+    $('#snapSalon').href = snapHref(link);
+    $('#shareNative2').hidden = !canNativeShare();
+  }
   $('#waitPulse').hidden = !pulse || !M.nr;
   $('#waitBot').hidden = !M.gid;
   renderInvites();
@@ -2130,6 +2155,12 @@ document.addEventListener('click', (e) => {
   if (act === 'home') { view = 'home'; refresh(true); }
   else if (act === 'rank') { rankTab = 'all'; view = 'rank'; refresh(true); }
   else if (act === 'solo') startSolo(curGame);
+  else if (act === 'share-app') nativeShare('Améthony', appMsg(false), APP_URL);
+  else if (act === 'share-salon') { if (M) nativeShare('Améthony', salonMsg(false), APP_URL + '#' + M.code); }
+  else if (act === 'copy-app') {
+    try { navigator.clipboard.writeText(APP_URL).then(() => toast('Lien copié'), () => toast(APP_URL)); }
+    catch (err) { toast(APP_URL); }
+  }
   else if (act === 'ecart-ok') tarotEcart();
   else if (act === 'uno-cancel') { if (M) { M.unoPick = null; refresh(); } }
   else if (act === 'sol-undo') { if (M && M.mode === 'solo' && M.hist.length) { M.sol = M.hist.pop(); M.sel = null; refresh(); } }
@@ -2260,12 +2291,34 @@ function relayStack() {
   return { room: lobby, db, user };
 }
 
+/* ------------------------------------------------------------------ partage */
+const canNativeShare = () => !IN_CLAUDE && typeof navigator.share === 'function';
+const waHref = (msg) => 'https://wa.me/?text=' + encodeURIComponent(msg);
+const snapHref = (url) => 'https://www.snapchat.com/scan?attachmentUrl=' + encodeURIComponent(url);
+function appMsg(withUrl = true) {
+  return `Viens jouer avec moi sur Améthony 🎲 Morpion, Puissance 4, Uno, Tarot, Bataille… Pas de compte à créer, ça marche sur téléphone${withUrl ? ' : ' + APP_URL : '.'}`;
+}
+function salonMsg(withUrl = true) {
+  const g = M && M.gid ? GAMES[M.gid] : null, code = M ? M.code.toUpperCase() : '';
+  return `${ME.name || 'Quelqu\'un'} t'invite à jouer ${g ? g.au : ''} sur Améthony ! Rejoins la partie (code ${code})${withUrl ? ' : ' + APP_URL + '#' + (M ? M.code : '') : '.'}`;
+}
+function nativeShare(title, text, url) {
+  if (!canNativeShare()) return;
+  try { navigator.share({ title, text, url }).catch(() => {}); } catch (e) {}
+}
+
 /* ------------------------------------------------------------------ boot */
 function boot() {
   document.querySelectorAll('.name-in').forEach(x => { x.value = ME.name; });
   const card = (id) => { const g = GAMES[id]; return `<button class="gcard" type="button" data-game="${id}" data-skin-prev="${g.skin || ''}"><span class="gicon">${ICONS[id]}</span><span class="gname">${g.name}</span><span class="gdesc">${g.blurb}</span><span class="gbadge" data-badge="${id}" hidden></span></button>`; };
   $('#games').innerHTML = ORDER_BOARD.map(card).join('');
   $('#games2').innerHTML = ORDER_CARDS.map(card).join('');
+  if (APP_URL) {
+    $('#shareApp').hidden = false;
+    $('#waApp').href = waHref(appMsg());
+    $('#snapApp').href = snapHref(APP_URL);
+    $('#shareNative1').hidden = !canNativeShare();
+  }
   const appQr = qrSVG(APP_URL);
   if (appQr) $('#appQr').innerHTML = appQr; else $('#install').hidden = true;
   let hashCode = '';
